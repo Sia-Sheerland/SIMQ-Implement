@@ -7,10 +7,11 @@ builds a graph over cluster representatives, retrieves candidate clusters for
 each query token, and applies exact MaxSim reranking to the candidate
 documents.
 
-This repository is the implementation companion to the SIMQ paper and the
-local reproduction experiments under `/home/yifan/multivector_experiment_p3`.
-The paths below are examples for the current experiment machine; replace them
-with paths appropriate to another machine.
+This repository is the implementation companion to the SIMQ paper. The
+paper's larger multi-dataset reproduction scripts may be kept in a separate
+experiment workspace; this README documents the required interfaces and the
+commands needed to run them. All commands use shell variables so that the
+instructions remain portable across machines.
 
 ## Repository layout
 
@@ -208,15 +209,16 @@ after the index has been loaded.
 
 The following commands describe the experiment workflow used for the paper
 workload. The standalone binaries in this repository are useful for building
-and evaluating one index. The complete five-dataset sweep is driven by the
-companion scripts in `/home/yifan/multivector_experiment_p3`; those scripts
-also validate the dataset paths and append the full stdout to a timestamped
-log.
+and evaluating one index. If a separate experiment workspace contains the
+paper's batch scripts, set `EXPERIMENT_ROOT` to that workspace before running
+the batch commands below. Those scripts validate dataset paths and append
+stdout to timestamped logs.
 
 ### 1. Build the experiment evaluator
 
 ```bash
-cd /home/yifan/multivector_experiment_p3
+export EXPERIMENT_ROOT=/path/to/multivector_experiment
+cd "$EXPERIMENT_ROOT"
 export CPP_DIR="$PWD/vector_test/cpp"
 export BUILD_DIR="$CPP_DIR/build-server"
 
@@ -237,9 +239,10 @@ used for the paper, including the exact log format and dataset conventions.
 
 ```bash
 export DATASET=quora
-export EMB_DIR="/home/yifan/Dataset/$DATASET/colbert_64d"
+export DATA_BASE=/path/to/Dataset
+export EMB_DIR="$DATA_BASE/$DATASET/colbert_64d"
 export INDEX_DIR="$EMB_DIR/SIMQ_alpha0p10_deferredK2_max160_mt64"
-mkdir -p /home/yifan/multivector_experiment_p3/server_logs
+mkdir -p "$EXPERIMENT_ROOT/server_logs"
 
 "$BUILD_DIR/random_clustering_updated0" \
   --embeddings-dir "$EMB_DIR" \
@@ -251,7 +254,7 @@ mkdir -p /home/yifan/multivector_experiment_p3/server_logs
   --build-threads 64 \
   --batch-size 10000 \
   --deferred-kmeans-split \
-  2>&1 | tee "/home/yifan/multivector_experiment_p3/server_logs/simq_${DATASET}_build.log"
+  2>&1 | tee "$EXPERIMENT_ROOT/server_logs/simq_${DATASET}_build.log"
 ```
 
 Do not reuse an output directory from a different parameter setting. Check
@@ -262,14 +265,14 @@ parameters explicit.
 ### 3. Run one fixed-parameter evaluation
 
 ```bash
-DATASET=quora M=100 RERANK_DOCS=1000 QUERY_THREADS=32 \
-  DATASETS=quora \
-  bash /home/yifan/multivector_experiment_p3/simq_parameter_runner.txt
+DATA_BASE=/path/to/Dataset \
+DATASETS=quora M=100 RERANK_DOCS=1000 QUERY_THREADS=32 \
+  bash "$EXPERIMENT_ROOT/simq_parameter_runner.txt"
 ```
 
 This runs with `ef=100` and `final-k=100`, checks the embedding/index/reorder/
 qrels paths, and writes a log under
-`/home/yifan/multivector_experiment_p3/server_logs/simq_parameter_eval/`.
+`$EXPERIMENT_ROOT/server_logs/simq_parameter_eval/`.
 For example, `RERANK_DOCS=5000` changes only the candidate count; it does not
 change the final output size unless `final-k` is changed in the script.
 
@@ -280,18 +283,19 @@ rebuild them:
 
 ```bash
 M_VALUES="2 5 10 20 30 40 50 60 70 80 90 100" \
+DATA_BASE=/path/to/Dataset \
 DATASETS="quora nq" \
 QUERY_THREADS=32 \
 SIMQ_RERANK_DOCS=1000 \
 SIMQ_EF=100 \
 SIMQ_FINAL_K=100 \
-bash /home/yifan/multivector_experiment_p3/simq_m_sweep32.txt
+bash "$EXPERIMENT_ROOT/simq_m_sweep32.txt"
 ```
 
 For the larger sweep used in the recorded alpha experiments:
 
 ```bash
-bash /home/yifan/multivector_experiment_p3/run_alpha_query_existing32.sh
+bash "$EXPERIMENT_ROOT/run_alpha_query_existing32.sh"
 ```
 
 That script uses `query_threads=32`, `ef=100`, `coarse_k=1000`,
@@ -304,7 +308,8 @@ query fails.
 ```bash
 DATASETS="scidocs quora hotpotqa lotte_beir nq" \
 M_VALUES="2 5 15 20 25 30 35 40 45 50" \
-bash /home/yifan/multivector_experiment_p3/simq_m_sweep32.txt
+DATA_BASE=/path/to/Dataset \
+bash "$EXPERIMENT_ROOT/simq_m_sweep32.txt"
 ```
 
 The valid dataset names are `scidocs`, `quora`, `hotpotqa`, `lotte_beir`, and
@@ -316,7 +321,7 @@ The valid dataset names are `scidocs`, `quora`, `hotpotqa`, `lotte_beir`, and
 
 ```bash
 rg -n "QPS=|P100@100|R100@100|Recall|Dataset=" \
-  /home/yifan/multivector_experiment_p3/server_logs/
+  "$EXPERIMENT_ROOT/server_logs/"
 ```
 
 Keep the raw log together with the exported table. The reported main-plot
