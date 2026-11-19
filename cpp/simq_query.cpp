@@ -1203,12 +1203,9 @@ void ClusterDiskRetrievalV2::print_info() const {
 static void print_help_v2() {
     std::cout <<
         "\nCommands:\n"
-        "  retrieve <index>         Retrieve one query with exact reranking\n"
         "  eval                    Evaluate all queries with exact reranking\n"
-        "  set-ef <value>          Set HNSW ef\n"
-        "  set-m  <value>          Set coarse top-m clusters per token\n"
-        "  info                    System info\n"
-        "  help / quit\n\n";
+        "  help                    Show this help\n"
+        "  quit                    Exit\n\n";
 }
 
 static std::vector<std::string> split_tokens_v2(const std::string& line) {
@@ -1227,22 +1224,8 @@ static void run_interactive_v2(ClusterDiskRetrievalV2& ret) {
         const std::string& cmd = tok[0];
         if (cmd=="quit"||cmd=="q") break;
         if (cmd=="help") { print_help_v2(); continue; }
-        if (cmd=="info") { ret.print_info(); continue; }
-        if (cmd=="set-ef" && tok.size()>=2) {
-            try { ret.set_hnsw_ef(std::stoi(tok[1])); } catch(...) { std::cout<<"invalid\n"; }
-            continue; }
         if (cmd=="eval") {
             ret.evaluate(); continue; }
-        if (cmd=="set-m" && tok.size()>=2) {
-            try { ret.set_m(std::stoi(tok[1])); } catch(...) { std::cout<<"invalid\n"; }
-            continue; }
-        if (cmd=="retrieve" && tok.size()>=2) {
-            try {
-                int idx=std::stoi(tok[1]); bool ur=true;
-                if (tok.size()>=3) ur=(std::stoi(tok[2])!=0);
-                ret.retrieve_query(idx,ur);
-            } catch(...) { std::cout<<"invalid\n"; }
-            continue; }
         std::cout << "Unknown command. Type 'help'.\n";
     }
 }

@@ -152,11 +152,7 @@ results; it does not mean that only 100 candidates are reranked.
 The only evaluation command used by the reproduction workflow is `eval`:
 
 ```text
-info
-set-ef 100
-set-m 100
 eval
-retrieve 0 1
 quit
 ```
 
