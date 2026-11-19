@@ -260,7 +260,7 @@ export INDEX_DIR="$EMB_DIR/SIMQ_alpha0p10_deferredK2_max160_mt64"
 export REORDER_DIR="$EMB_DIR/reorder_embedding"
 export QRELS="$EMB_DIR/search_results_top100.tsv"
 
-printf 'eval\nquit\n' | "$BUILD_DIR/simq_query" \
+"$BUILD_DIR/simq_query" \
   --embeddings-dir "$EMB_DIR" \
   --cluster-dir "$INDEX_DIR" \
   --reorder-dir "$REORDER_DIR" \
@@ -282,7 +282,7 @@ rebuild them:
 
 ```bash
 for M in 2 5 10 20 30 40 50 60 70 80 90 100; do
-  printf 'eval\nquit\n' | "$BUILD_DIR/simq_query" \
+  "$BUILD_DIR/simq_query" \
     --embeddings-dir "$DATA_BASE/quora/colbert" \
     --cluster-dir "$DATA_BASE/quora/colbert/SIMQ_alpha0p10_deferredK2_max160_mt64" \
     --reorder-dir "$DATA_BASE/quora/colbert/reorder_embedding" \
@@ -298,7 +298,7 @@ change only `INDEX_DIR`:
 ```bash
 for ALPHA in 0p05 0p08 0p15 0p20; do
   export INDEX_DIR="$EMB_DIR/SIMQ_alpha${ALPHA}_deferredK2_max160_mt64"
-  printf 'eval\nquit\n' | "$BUILD_DIR/simq_query" \
+  "$BUILD_DIR/simq_query" \
     --embeddings-dir "$EMB_DIR" \
     --cluster-dir "$INDEX_DIR" \
     --reorder-dir "$REORDER_DIR" \
@@ -317,7 +317,7 @@ It queries existing alpha indexes and does not rebuild them.
 for DATASET in scidocs quora hotpotqa lotte_beir nq; do
   EMB_DIR="$DATA_BASE/$DATASET/colbert"
   INDEX_DIR="$EMB_DIR/SIMQ_alpha0p10_deferredK2_max160_mt64"
-  printf 'eval\nquit\n' | "$BUILD_DIR/simq_query" \
+  "$BUILD_DIR/simq_query" \
     --embeddings-dir "$EMB_DIR" \
     --cluster-dir "$INDEX_DIR" \
     --reorder-dir "$EMB_DIR/reorder_embedding" \

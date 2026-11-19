@@ -1200,36 +1200,6 @@ void ClusterDiskRetrievalV2::print_info() const {
               << " final_k=" << final_k_ << " query_threads=" << query_threads_ << "\n";
 }
 
-static void print_help_v2() {
-    std::cout <<
-        "\nCommands:\n"
-        "  eval                    Evaluate all queries with exact reranking\n"
-        "  help                    Show this help\n"
-        "  quit                    Exit\n\n";
-}
-
-static std::vector<std::string> split_tokens_v2(const std::string& line) {
-    std::vector<std::string> t; std::istringstream iss(line); std::string tok;
-    while (iss >> tok) t.push_back(tok); return t;
-}
-
-static void run_interactive_v2(ClusterDiskRetrievalV2& ret) {
-    print_help_v2();
-    std::string line;
-    while (true) {
-        std::cout << "> "; std::cout.flush();
-        if (!std::getline(std::cin, line)) break;
-        auto tok = split_tokens_v2(line);
-        if (tok.empty()) continue;
-        const std::string& cmd = tok[0];
-        if (cmd=="quit"||cmd=="q") break;
-        if (cmd=="help") { print_help_v2(); continue; }
-        if (cmd=="eval") {
-            ret.evaluate(); continue; }
-        std::cout << "Unknown command. Type 'help'.\n";
-    }
-}
-
 int main(int argc, char** argv) {
     std::string base_dir="data", jieguo="dataset", emb_subdir="colbert";
     std::string emb_dir_override, cluster_dir_override,
@@ -1266,7 +1236,7 @@ int main(int argc, char** argv) {
             std::cout << "Usage: " << argv[0] << " [options]\n"
                          "Optimisations: HNSW/CAGRA center search + integer-array scoring + libaio async IO\n"
                          "\n--center-index hnsw|cagra   Select center graph (CAGRA requires cagra_centers.bin and cagra_centers.nsg)\n"
-                         "\nInteractive evaluation: type 'eval' after startup\n"
+                         "\nThe program automatically evaluates all queries after loading the index\n"
                          "\n--query-threads N    Parallel queries (default: 1)\n"
                          "\n--in-memory         mmap 整个 reorder 文件到 RAM（首次预热后零 IO）\n";
             return 0; }
@@ -1289,7 +1259,7 @@ int main(int argc, char** argv) {
     ClusterDiskRetrievalV2 ret(emb_dir, cluster_dir, reorder_dir, qrels_path,
                                m, ef, coarse_k, final_k, query_threads, in_memory, use_cagra);
 
-    // Interactive mode
-    run_interactive_v2(ret);
+    // Command-line mode: load once, evaluate once, and exit.
+    ret.evaluate();
     return 0;
 }
