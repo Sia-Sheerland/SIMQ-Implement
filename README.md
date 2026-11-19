@@ -13,6 +13,8 @@ experiment workspace; this README documents the required interfaces and the
 commands needed to run them. All commands use shell variables so that the
 instructions remain portable across machines.
 
+Paper: [SIMQ on arXiv](https://arxiv.org/abs/2611.22079)
+
 ## Repository layout
 
 ```text
