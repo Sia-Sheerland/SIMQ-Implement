@@ -158,11 +158,7 @@ public:
     }
 
     void retrieve_query(int query_index, bool use_rerank = true);
-    void evaluate(bool use_rerank = true);
-    void evaluate_both();
-    void eval_lazy();
-    void eval_m_10_100();
-    void eval_lazy_LoTTE();
+    void evaluate();
     void print_info() const;
 
     void set_hnsw_ef(int ef) {
@@ -172,6 +168,13 @@ public:
     void set_m(int m) { m_ = m; std::cout << "m set to " << m_ << "\n"; }
 
 private:
+    // Legacy internal sweep helpers are kept private for source compatibility;
+    // the public evaluator exposes only the single `eval` workflow.
+    void evaluate_both();
+    void eval_lazy();
+    void eval_m_10_100();
+    void eval_lazy_LoTTE();
+
     void load_npy_info();
     void load_clustering();
     void load_query_vecs();
@@ -489,7 +492,7 @@ ClusterDiskRetrievalV2::get_query_vecs(int qi) const {
     return ptrs;
 }
 
-// coarse_search  —  two optimisations vs cluster_eval_disk:
+// coarse_search — centroid retrieval followed by integer-array scoring.
 //
 //   (a) cscore = 1.0f - result.top().first
 //       InnerProductSpace stores dist = 1 - dot, so we reuse the value
@@ -867,15 +870,14 @@ void ClusterDiskRetrievalV2::retrieve_query(int qi, bool use_rerank) {
               << "\n" << std::string(80,'=') << "\n\n";
 }
 
-void ClusterDiskRetrievalV2::evaluate(bool use_rerank) {
+void ClusterDiskRetrievalV2::evaluate() {
     const auto& qidxs = qrel_qindices_;
     int nq = (int)qidxs.size();
     std::cout << "\n" << std::string(80,'=') << "\nEVALUATION - "
-              << (use_rerank ? "COARSE+DISK-RERANK" : "COARSE ONLY") << "\n"
+              << "COARSE+DISK-RERANK\n"
               << std::string(80,'=') << "\n"
               << "m=" << m_ << " ef=" << ef_;
-    if (use_rerank) std::cout << " coarse_k=" << coarse_k_;
-    std::cout << " final_k=" << final_k_ << " query_threads=" << query_threads_
+    std::cout << " coarse_k=" << coarse_k_ << " final_k=" << final_k_ << " query_threads=" << query_threads_
               << "  Queries(with qrels): " << nq << "\n" << std::string(80,'=') << "\n";
 
     std::vector<std::vector<RetrievalResult>> all(nq);
@@ -885,7 +887,7 @@ void ClusterDiskRetrievalV2::evaluate(bool use_rerank) {
     std::mutex progress_mu;
     parallel_for_queries(nq, query_threads_, [&](int i) {
         int qi = qidxs[i];
-        all[i] = search_query(qi, ht[i], st[i], rt[i], pt[i], ct[i], use_rerank);
+        all[i] = search_query(qi, ht[i], st[i], rt[i], pt[i], ct[i], true);
         int done = completed.fetch_add(1) + 1;
         int step = std::max(1, nq/20);
         if (done % step == 0 || done == nq) {
@@ -904,7 +906,7 @@ void ClusterDiskRetrievalV2::evaluate(bool use_rerank) {
     std::cout << "\nwall=" << std::fixed << std::setprecision(2) << wall << "s"
               << "  CenterSearch=" << std::setprecision(3) << ah
               << "ms  Scoring=" << as << "ms";
-    if (use_rerank) std::cout << "  Rerank=" << ar << "ms";
+    std::cout << "  Rerank=" << ar << "ms";
     std::cout << "  Total=" << at << "ms  QPS=" << std::setprecision(1) << (nq / wall) << "\n"
               << std::string(80,'-') << "\n";
     for (auto& [k,p] : compute_precision_at_k(all, {10,20,50,100}))
@@ -1201,11 +1203,8 @@ void ClusterDiskRetrievalV2::print_info() const {
 static void print_help_v2() {
     std::cout <<
         "\nCommands:\n"
-        "  retrieve <index> [0/1]  Retrieve (0=coarse-only, 1=coarse+rerank)\n"
-        "  eval [0/1]              Evaluate all queries\n"
-        "  eval both               Coarse-only vs coarse+rerank\n"
-        "  eval_lazy               QPS sweep: m=2,5,10..100\n"
-        "  eval_lazy_LoTTE         LoTTE sweep: ef=100(m=10,20,50,100), ef=200..2000\n"
+        "  retrieve <index>         Retrieve one query with exact reranking\n"
+        "  eval                    Evaluate all queries with exact reranking\n"
         "  set-ef <value>          Set HNSW ef\n"
         "  set-m  <value>          Set coarse top-m clusters per token\n"
         "  info                    System info\n"
@@ -1232,14 +1231,8 @@ static void run_interactive_v2(ClusterDiskRetrievalV2& ret) {
         if (cmd=="set-ef" && tok.size()>=2) {
             try { ret.set_hnsw_ef(std::stoi(tok[1])); } catch(...) { std::cout<<"invalid\n"; }
             continue; }
-        if (cmd=="eval" && tok.size()>=2 && tok[1]=="both") { ret.evaluate_both(); continue; }
-        if (cmd=="eval_lazy") { ret.eval_lazy(); continue; }
-        if (cmd=="eval_m_10_100") { ret.eval_m_10_100(); continue; }
-        if (cmd=="eval_lazy_LoTTE") { ret.eval_lazy_LoTTE(); continue; }
         if (cmd=="eval") {
-            bool ur=true;
-            if (tok.size()>=2) try { ur=(std::stoi(tok[1])!=0); } catch(...) {}
-            ret.evaluate(ur); continue; }
+            ret.evaluate(); continue; }
         if (cmd=="set-m" && tok.size()>=2) {
             try { ret.set_m(std::stoi(tok[1])); } catch(...) { std::cout<<"invalid\n"; }
             continue; }
@@ -1255,11 +1248,10 @@ static void run_interactive_v2(ClusterDiskRetrievalV2& ret) {
 }
 
 int main(int argc, char** argv) {
-    std::string base_dir=".", jieguo="Jie_Guo", emb_subdir="colbert_64d";
+    std::string base_dir="data", jieguo="dataset", emb_subdir="colbert";
     std::string emb_dir_override, cluster_dir_override,
                 reorder_dir_override, quora_dir_override, qrels_file_override;
     std::string eval_split="search_results";
-    std::string eval_mode;  // non-interactive mode: eval_once/eval_lazy/eval_m_10_100/eval_lazy_LoTTE
     int m=5, ef=100, coarse_k=1000, final_k=100, query_threads=1;
     bool in_memory = false;
     bool use_cagra = false;
@@ -1275,7 +1267,6 @@ int main(int argc, char** argv) {
         else if (a=="--quora-dir"      &&i+1<argc) quora_dir_override  =argv[++i];
         else if (a=="--eval-split"     &&i+1<argc) eval_split          =argv[++i];
         else if (a=="--qrels-file"     &&i+1<argc) qrels_file_override =argv[++i];
-        else if (a=="--eval-mode"      &&i+1<argc) eval_mode           =argv[++i];
         else if (a=="--m"        &&i+1<argc) m        =std::stoi(argv[++i]);
         else if (a=="--ef"       &&i+1<argc) ef       =std::stoi(argv[++i]);
         else if (a=="--coarse-k" &&i+1<argc) coarse_k =std::stoi(argv[++i]);
@@ -1289,10 +1280,10 @@ int main(int argc, char** argv) {
             else { std::cerr << "Invalid --center-index: " << mode << " (use hnsw or cagra)\n"; return 2; }
         }
         else if (a=="--help"||a=="-h") {
-            std::cout << "Usage: " << argv[0] << " [same options as cluster_eval_disk]\n"
+            std::cout << "Usage: " << argv[0] << " [options]\n"
                          "Optimisations: HNSW/CAGRA center search + integer-array scoring + libaio async IO\n"
                          "\n--center-index hnsw|cagra   Select center graph (CAGRA requires cagra_centers.bin and cagra_centers.nsg)\n"
-                         "\n--eval-mode <mode>  Non-interactive mode: eval_once, eval_lazy, eval_m_10_100, or eval_lazy_LoTTE\n"
+                         "\nInteractive evaluation: type 'eval' after startup\n"
                          "\n--query-threads N    Parallel queries (default: 1)\n"
                          "\n--in-memory         mmap 整个 reorder 文件到 RAM（首次预热后零 IO）\n";
             return 0; }
@@ -1314,23 +1305,6 @@ int main(int argc, char** argv) {
 
     ClusterDiskRetrievalV2 ret(emb_dir, cluster_dir, reorder_dir, qrels_path,
                                m, ef, coarse_k, final_k, query_threads, in_memory, use_cagra);
-
-    // Non-interactive mode: run the specified eval and exit
-    if (!eval_mode.empty()) {
-        if (eval_mode == "eval_lazy") {
-            ret.eval_lazy();
-        } else if (eval_mode == "eval_lazy_LoTTE") {
-            ret.eval_lazy_LoTTE();
-        } else if (eval_mode == "eval_m_10_100") {
-            ret.eval_m_10_100();
-        } else if (eval_mode == "eval_once") {
-            ret.evaluate();
-        } else {
-            std::cerr << "Unknown eval-mode: " << eval_mode << " (use eval_once, eval_lazy, eval_m_10_100, or eval_lazy_LoTTE)\n";
-            return 1;
-        }
-        return 0;
-    }
 
     // Interactive mode
     run_interactive_v2(ret);

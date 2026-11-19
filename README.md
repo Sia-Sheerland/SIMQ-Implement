@@ -208,32 +208,26 @@ after the index has been loaded.
 ## End-to-end reproduction commands
 
 The following commands describe the experiment workflow used for the paper
-workload. The standalone binaries in this repository are useful for building
-and evaluating one index. If a separate experiment workspace contains the
-paper's batch scripts, set `EXPERIMENT_ROOT` to that workspace before running
-the batch commands below. Those scripts validate dataset paths and append
-stdout to timestamped logs.
+workload. They use only the binaries and files in this repository plus an
+external dataset directory. Set `SIMQ_ROOT` and `DATA_BASE` once, then reuse
+them for all commands.
 
-### 1. Build the experiment evaluator
+### 1. Build the executables
 
 ```bash
-export EXPERIMENT_ROOT=/path/to/multivector_experiment
-cd "$EXPERIMENT_ROOT"
-export CPP_DIR="$PWD/vector_test/cpp"
-export BUILD_DIR="$CPP_DIR/build-server"
+export SIMQ_ROOT=/path/to/SIMQ-Implement
+export DATA_BASE=/path/to/Dataset
+cd "$SIMQ_ROOT"
+export CPP_DIR="$SIMQ_ROOT/cpp"
+export BUILD_DIR="$SIMQ_ROOT/build"
 
 cmake -S "$CPP_DIR" -B "$BUILD_DIR" \
   -DCMAKE_BUILD_TYPE=Release \
   -DCMAKE_DISABLE_FIND_PACKAGE_CUDAToolkit=TRUE
-cmake --build "$BUILD_DIR" \
-  --target random_clustering_updated0 cluster_eval_disk_v4 -j4
+cmake --build "$BUILD_DIR" -j4
 ```
 
-For the standalone copy in this repository, use the build command in the
-previous section and run `build/simq_index_builder` plus `build/simq_query`.
-The two entry points have the same high-level pipeline, but the companion
-experiment evaluator contains the additional production measurement paths
-used for the paper, including the exact log format and dataset conventions.
+The build produces `build/simq_index_builder` and `build/simq_query`.
 
 ### 2. Build one paper-style index
 
@@ -242,9 +236,9 @@ export DATASET=quora
 export DATA_BASE=/path/to/Dataset
 export EMB_DIR="$DATA_BASE/$DATASET/colbert"
 export INDEX_DIR="$EMB_DIR/SIMQ_alpha0p10_deferredK2_max160_mt64"
-mkdir -p "$EXPERIMENT_ROOT/server_logs"
+mkdir -p "$SIMQ_ROOT/logs"
 
-"$BUILD_DIR/random_clustering_updated0" \
+"$BUILD_DIR/simq_index_builder" \
   --embeddings-dir "$EMB_DIR" \
   --output-dir "$INDEX_DIR" \
   --init-ratio 0.1 \
@@ -254,7 +248,7 @@ mkdir -p "$EXPERIMENT_ROOT/server_logs"
   --build-threads 64 \
   --batch-size 10000 \
   --deferred-kmeans-split \
-  2>&1 | tee "$EXPERIMENT_ROOT/server_logs/simq_${DATASET}_build.log"
+  2>&1 | tee "$SIMQ_ROOT/logs/simq_${DATASET}_build.log"
 ```
 
 Do not reuse an output directory from a different parameter setting. Check
@@ -265,16 +259,25 @@ parameters explicit.
 ### 3. Run one fixed-parameter evaluation
 
 ```bash
-DATA_BASE=/path/to/Dataset \
-DATASETS=quora M=100 RERANK_DOCS=1000 QUERY_THREADS=32 \
-  bash "$EXPERIMENT_ROOT/simq_parameter_runner.txt"
+export EMB_DIR="$DATA_BASE/quora/colbert"
+export INDEX_DIR="$EMB_DIR/SIMQ_alpha0p10_deferredK2_max160_mt64"
+export REORDER_DIR="$EMB_DIR/reorder_embedding"
+export QRELS="$EMB_DIR/search_results_top100.tsv"
+
+printf 'eval\nquit\n' | "$BUILD_DIR/simq_query" \
+  --embeddings-dir "$EMB_DIR" \
+  --cluster-dir "$INDEX_DIR" \
+  --reorder-dir "$REORDER_DIR" \
+  --qrels-file "$QRELS" \
+  --m 100 --ef 100 --coarse-k 1000 --final-k 100 --query-threads 32 \
+  2>&1 | tee "$SIMQ_ROOT/logs/simq_quora_m100.log"
 ```
 
 This runs with `ef=100` and `final-k=100`, checks the embedding/index/reorder/
 qrels paths, and writes a log under
-`$EXPERIMENT_ROOT/server_logs/simq_parameter_eval/`.
-For example, `RERANK_DOCS=5000` changes only the candidate count; it does not
-change the final output size unless `final-k` is changed in the script.
+`$SIMQ_ROOT/logs/`.
+For example, use `--coarse-k 5000` to rerank 5,000 candidates; the final output
+remains top-100 because `--final-k 100` is unchanged.
 
 ### 4. Sweep `m` on selected datasets
 
@@ -282,46 +285,61 @@ The standard five-dataset sweep reuses already-built indexes and does not
 rebuild them:
 
 ```bash
-M_VALUES="2 5 10 20 30 40 50 60 70 80 90 100" \
-DATA_BASE=/path/to/Dataset \
-DATASETS="quora nq" \
-QUERY_THREADS=32 \
-SIMQ_RERANK_DOCS=1000 \
-SIMQ_EF=100 \
-SIMQ_FINAL_K=100 \
-bash "$EXPERIMENT_ROOT/simq_m_sweep32.txt"
+for M in 2 5 10 20 30 40 50 60 70 80 90 100; do
+  printf 'eval\nquit\n' | "$BUILD_DIR/simq_query" \
+    --embeddings-dir "$DATA_BASE/quora/colbert" \
+    --cluster-dir "$DATA_BASE/quora/colbert/SIMQ_alpha0p10_deferredK2_max160_mt64" \
+    --reorder-dir "$DATA_BASE/quora/colbert/reorder_embedding" \
+    --qrels-file "$DATA_BASE/quora/search_results_top100.tsv" \
+    --m "$M" --ef 100 --coarse-k 1000 --final-k 100 --query-threads 32 \
+    2>&1 | tee "$SIMQ_ROOT/logs/simq_quora_m${M}.log"
+done
 ```
 
-For the larger sweep used in the recorded alpha experiments:
+To compare several saved alpha indexes, repeat the same `eval` command and
+change only `INDEX_DIR`:
 
 ```bash
-bash "$EXPERIMENT_ROOT/run_alpha_query_existing32.sh"
+for ALPHA in 0p05 0p08 0p15 0p20; do
+  export INDEX_DIR="$EMB_DIR/SIMQ_alpha${ALPHA}_deferredK2_max160_mt64"
+  printf 'eval\nquit\n' | "$BUILD_DIR/simq_query" \
+    --embeddings-dir "$EMB_DIR" \
+    --cluster-dir "$INDEX_DIR" \
+    --reorder-dir "$REORDER_DIR" \
+    --qrels-file "$QRELS" \
+    --m 100 --ef 100 --coarse-k 1000 --final-k 100 --query-threads 32 \
+    2>&1 | tee "$SIMQ_ROOT/logs/simq_quora_alpha${ALPHA}_m100.log"
+done
 ```
 
-That script uses `query_threads=32`, `ef=100`, `coarse_k=1000`,
-`final_k=100`, and the explicit `m` list in the script. It only queries
-existing alpha indexes and stops a parameter series when an index check or
-query fails.
+This uses `query_threads=32`, `ef=100`, `coarse_k=1000`, and `final_k=100`.
+It queries existing alpha indexes and does not rebuild them.
 
 ### 5. Run all five standard datasets
 
 ```bash
-DATASETS="scidocs quora hotpotqa lotte_beir nq" \
-M_VALUES="2 5 15 20 25 30 35 40 45 50" \
-DATA_BASE=/path/to/Dataset \
-bash "$EXPERIMENT_ROOT/simq_m_sweep32.txt"
+for DATASET in scidocs quora hotpotqa lotte_beir nq; do
+  EMB_DIR="$DATA_BASE/$DATASET/colbert"
+  INDEX_DIR="$EMB_DIR/SIMQ_alpha0p10_deferredK2_max160_mt64"
+  printf 'eval\nquit\n' | "$BUILD_DIR/simq_query" \
+    --embeddings-dir "$EMB_DIR" \
+    --cluster-dir "$INDEX_DIR" \
+    --reorder-dir "$EMB_DIR/reorder_embedding" \
+    --qrels-file "$EMB_DIR/search_results_top100.tsv" \
+    --m 100 --ef 100 --coarse-k 1000 --final-k 100 --query-threads 32 \
+    2>&1 | tee "$SIMQ_ROOT/logs/simq_${DATASET}_m100.log"
+done
 ```
 
 The valid dataset names are `scidocs`, `quora`, `hotpotqa`, `lotte_beir`, and
-`nq`. The script maps each name to its `colbert` directory, the standard
-`HNSW_cluster_efc100` index, `reorder_embedding`, and
-`search_results_top100.tsv`.
+`nq`. Each dataset uses a `colbert` directory, a saved SIMQ index,
+`reorder_embedding`, and `search_results_top100.tsv`.
 
 ### 6. Inspect and extract results
 
 ```bash
 rg -n "QPS=|P100@100|R100@100|Recall|Dataset=" \
-  "$EXPERIMENT_ROOT/server_logs/"
+  "$SIMQ_ROOT/logs/"
 ```
 
 Keep the raw log together with the exported table. The reported main-plot

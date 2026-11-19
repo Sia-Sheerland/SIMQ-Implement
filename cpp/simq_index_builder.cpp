@@ -689,8 +689,8 @@ void HNSWDynamicClustering::save(const std::string& output_dir) const {
 }
 
 int main(int argc, char** argv) {
-    std::string embeddings_dir = "Jie_Guo/colbert_64d";
-    std::string output_dir     = "Jie_Guo/colbert_64d/HNSW_cluster_rep";
+    std::string embeddings_dir = "data/colbert";
+    std::string output_dir     = "data/colbert/index";
     float  init_ratio = 0.2f;
     int    max_size   = 82;
     int    split_idx  = 42;
@@ -716,8 +716,8 @@ int main(int argc, char** argv) {
         else if (arg == "--help" || arg == "-h") {
             std::cout <<
                 "Usage: " << argv[0] << " [options]\n"
-                "  --embeddings-dir DIR   Embeddings dir (default: Jie_Guo/colbert_64d)\n"
-                "  --output-dir DIR       Output dir    (default: Jie_Guo/colbert_64d/HNSW_cluster_rep)\n"
+                "  --embeddings-dir DIR   Embeddings dir (default: data/colbert)\n"
+                "  --output-dir DIR       Output dir    (default: data/colbert/index)\n"
                 "  --init-ratio FLOAT     Initial center ratio (default: 0.2)\n"
                 "  --max-size INT         Max cluster size     (default: 82)\n"
                 "  --split-idx INT        Split start index    (default: 42)\n"
