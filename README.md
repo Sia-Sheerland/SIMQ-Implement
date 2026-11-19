@@ -126,8 +126,9 @@ Use `./build/simq_index_builder --help` for the complete option list.
 
 ## Querying and evaluation
 
-The query executable can run interactively or in a non-interactive evaluation
-mode. A representative main-experiment invocation is:
+The query executable runs one complete evaluation directly from the command
+line and exits after printing the results. A representative main-experiment
+invocation is:
 
 ```bash
 ./build/simq_query \
@@ -149,15 +150,8 @@ top 100 documents after reranking. Thus, in the paper experiment label
 `rerank=1000`, the 1,000 candidates are reranked and truncated to 100 final
 results; it does not mean that only 100 candidates are reranked.
 
-The only evaluation command used by the reproduction workflow is `eval`:
-
-```text
-eval
-quit
-```
-
 Parameter sweeps are implemented by starting the program once per parameter
-setting and issuing `eval`.
+setting with the corresponding command-line options.
 
 The evaluation prints throughput and precision/recall statistics, including
 `Recall@10@100`, `Recall@20@100`, `Recall@50@100`, and the corresponding
@@ -292,8 +286,8 @@ for M in 2 5 10 20 30 40 50 60 70 80 90 100; do
 done
 ```
 
-To compare several saved alpha indexes, repeat the same `eval` command and
-change only `INDEX_DIR`:
+To compare several saved alpha indexes, repeat the same command and change
+only `INDEX_DIR`:
 
 ```bash
 for ALPHA in 0p05 0p08 0p15 0p20; do
