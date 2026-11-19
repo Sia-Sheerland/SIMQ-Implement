@@ -171,7 +171,6 @@ qrels. The current paper workspace uses the following broad protocol:
 | Cluster size/splitting | `max-size=160`, split around `80`, deferred `K=2` |
 | Representative graph | HNSW over cluster representatives |
 | Query threads | 32 in the recorded main sweeps |
-| Graph search budget | `ef=100` in the standard SIMQ sweeps |
 | Candidate documents | 1,000 |
 | Final output | top 100 documents |
 | Reported metric | `Recall@100@100` and QPS |
