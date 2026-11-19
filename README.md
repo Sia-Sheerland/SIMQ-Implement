@@ -94,8 +94,8 @@ multi-threaded construction, explicitly set all important parameters:
 
 ```bash
 ./build/simq_index_builder \
-  --embeddings-dir /path/to/colbert_64d \
-  --output-dir /path/to/colbert_64d/SIMQ_index \
+  --embeddings-dir /path/to/colbert \
+  --output-dir /path/to/colbert/SIMQ_index \
   --init-ratio 0.1 \
   --max-size 160 \
   --split-idx 80 \
@@ -131,9 +131,9 @@ mode. A representative main-experiment invocation is:
 
 ```bash
 ./build/simq_query \
-  --embeddings-dir /path/to/colbert_64d \
-  --cluster-dir /path/to/colbert_64d/SIMQ_index \
-  --reorder-dir /path/to/colbert_64d/reorder_embedding \
+  --embeddings-dir /path/to/colbert \
+  --cluster-dir /path/to/colbert/SIMQ_index \
+  --reorder-dir /path/to/colbert/reorder_embedding \
   --qrels-file /path/to/search_results_top100.tsv \
   --m 100 \
   --ef 100 \
@@ -149,19 +149,19 @@ top 100 documents after reranking. Thus, in the paper experiment label
 `rerank=1000`, the 1,000 candidates are reranked and truncated to 100 final
 results; it does not mean that only 100 candidates are reranked.
 
-Useful interactive commands are:
+The only evaluation command used by the reproduction workflow is `eval`:
 
 ```text
 info
 set-ef 100
 set-m 100
 eval
-eval both
-eval_lazy
-eval_lazy_LoTTE
 retrieve 0 1
 quit
 ```
+
+Parameter sweeps are implemented by starting the program once per parameter
+setting and issuing `eval`.
 
 The evaluation prints throughput and precision/recall statistics, including
 `Recall@10@100`, `Recall@20@100`, `Recall@50@100`, and the corresponding
@@ -240,7 +240,7 @@ used for the paper, including the exact log format and dataset conventions.
 ```bash
 export DATASET=quora
 export DATA_BASE=/path/to/Dataset
-export EMB_DIR="$DATA_BASE/$DATASET/colbert_64d"
+export EMB_DIR="$DATA_BASE/$DATASET/colbert"
 export INDEX_DIR="$EMB_DIR/SIMQ_alpha0p10_deferredK2_max160_mt64"
 mkdir -p "$EXPERIMENT_ROOT/server_logs"
 
@@ -313,7 +313,7 @@ bash "$EXPERIMENT_ROOT/simq_m_sweep32.txt"
 ```
 
 The valid dataset names are `scidocs`, `quora`, `hotpotqa`, `lotte_beir`, and
-`nq`. The script maps each name to its `colbert_64d` directory, the standard
+`nq`. The script maps each name to its `colbert` directory, the standard
 `HNSW_cluster_efc100` index, `reorder_embedding`, and
 `search_results_top100.tsv`.
 
